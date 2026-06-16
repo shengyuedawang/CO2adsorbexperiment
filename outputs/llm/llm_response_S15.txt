@@ -1,0 +1,1 @@
+{"predictions":[{"sample_id":"S15","co2_adsorbed_amount":3.05}]}

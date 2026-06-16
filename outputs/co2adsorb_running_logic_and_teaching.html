@@ -1,0 +1,176 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>CO2 Adsorb ML + LLM 运行逻辑与教学解释</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", Arial, sans-serif; margin: 0; color: #20242a; background: #f6f7f9; line-height: 1.65; }
+    header { background: #14324a; color: white; padding: 36px 7vw 28px; }
+    main { max-width: 1120px; margin: 0 auto; padding: 28px 20px 56px; }
+    section { background: white; border: 1px solid #d9dde3; border-radius: 8px; padding: 22px 24px; margin: 18px 0; }
+    h1 { margin: 0 0 8px; font-size: 30px; }
+    h2 { margin-top: 0; color: #14324a; }
+    h3 { margin-bottom: 6px; }
+    code, pre { font-family: Consolas, "Courier New", monospace; }
+    pre { background: #101820; color: #e7edf4; padding: 14px; border-radius: 6px; overflow-x: auto; }
+    .data-table { border-collapse: collapse; width: 100%; margin: 12px 0; font-size: 14px; }
+    .data-table th, .data-table td { border: 1px solid #d8dde6; padding: 8px 10px; text-align: left; }
+    .data-table th { background: #edf2f7; }
+    img { max-width: 100%; border: 1px solid #d8dde6; border-radius: 6px; background: white; }
+    .note { background: #fff8e6; border-left: 4px solid #d79b00; padding: 10px 12px; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 14px; }
+  </style>
+</head>
+<body>
+<header>
+  <h1>CO2 固体胺吸附量预测：LR / RF / XGBoost / MLP / LLM 对比</h1>
+  <p>基于 zenonLEE/co2adsorb 的示例数据，仿照 Energy and AI 2025 论文 Fig. 3 的评估思路，形成可运行的本地实验流程。</p>
+</header>
+<main>
+  <section>
+    <h2>1. 代码库怎么运行</h2>
+    <p>在 VSCode 中打开 <code>E:\LLM2025\co2adsorb</code> 文件夹，打开 <code>run_experiment.py</code>，点击右上角运行即可。也可以在终端运行：</p>
+    <pre>E:\LLM2025\.venv\Scripts\python.exe run_experiment.py --llm-mode fallback</pre>
+    <p>如果要尝试真实调用本地 Codex CLI：</p>
+    <pre>E:\LLM2025\.venv\Scripts\python.exe run_experiment.py --llm-mode codex</pre>
+    <p class="note">如果 Codex CLI 无法在当前环境中执行，程序不会中断，会自动切换到可复现的上下文近邻回退模型，并在每个 <code>llm_response_*.txt</code> 中记录原因。</p>
+  </section>
+
+  <section>
+    <h2>2. 运行逻辑流程</h2>
+    <ol>
+      <li>读取 <code>data/co2_adsorbents.csv</code> 中的 19 条固体胺 CO2 吸附样本。</li>
+      <li>构造材料学特征：比表面积损失、孔体积损失、孔保留率、胺负载后的氮含量、伯/仲/叔胺有效氮等。</li>
+      <li>把数值特征做缺失值填补和标准化，把 <code>amine_type</code> 做 One-Hot 编码。</li>
+      <li>使用 Leave-One-Out Cross-Validation。每次拿 18 条训练，留下 1 条测试，循环 19 次。</li>
+      <li>训练并比较 LR、RF、XGBoost、MLP 四个传统机器学习回归模型。</li>
+      <li>为 LLM 构造 in-context prompt：18 条带答案的训练例子 + 1 条待预测样本。真实 Codex CLI 可选调用；失败时使用上下文近邻回退。</li>
+      <li>计算 MAE、MSE、RMSE、R2 和 Pearson 相关系数，并保存 Fig. 3 风格柱状图。</li>
+      <li>用 XGBoost 在全数据上拟合一个解释模型，输出 SHAP summary plot 用于理解特征重要性。</li>
+    </ol>
+  </section>
+
+  <section>
+    <h2>3. 当前评估结果</h2>
+    <table class="dataframe data-table">
+  <thead>
+    <tr style="text-align: right;">
+      <th>Model</th>
+      <th>MAE</th>
+      <th>MSE</th>
+      <th>RMSE</th>
+      <th>R2</th>
+      <th>Pearson_r</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>LR</td>
+      <td>0.5509</td>
+      <td>0.7425</td>
+      <td>0.8617</td>
+      <td>0.0660</td>
+      <td>0.7244</td>
+    </tr>
+    <tr>
+      <td>RF</td>
+      <td>0.3754</td>
+      <td>0.2395</td>
+      <td>0.4894</td>
+      <td>0.6988</td>
+      <td>0.8400</td>
+    </tr>
+    <tr>
+      <td>XGBoost</td>
+      <td>0.3724</td>
+      <td>0.3013</td>
+      <td>0.5489</td>
+      <td>0.6210</td>
+      <td>0.7984</td>
+    </tr>
+    <tr>
+      <td>MLP</td>
+      <td>0.2676</td>
+      <td>0.1570</td>
+      <td>0.3962</td>
+      <td>0.8025</td>
+      <td>0.9111</td>
+    </tr>
+    <tr>
+      <td>LLM</td>
+      <td>0.1884</td>
+      <td>0.1074</td>
+      <td>0.3278</td>
+      <td>0.8649</td>
+      <td>0.9315</td>
+    </tr>
+  </tbody>
+</table>
+    <h3>LLM 来源统计</h3>
+    <table class="dataframe data-table">
+  <thead>
+    <tr style="text-align: right;">
+      <th>Source</th>
+      <th>Count</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>codex_cli</td>
+      <td>19</td>
+    </tr>
+  </tbody>
+</table>
+  </section>
+
+  <section>
+    <h2>4. 输出文件</h2>
+    <div class="grid">
+      <div><h3>模型指标</h3><p><code>outputs/model_metrics.csv</code></p></div>
+      <div><h3>逐样本预测</h3><p><code>outputs/predictions.csv</code></p></div>
+      <div><h3>Fig. 3 风格图</h3><p><code>outputs/fig3_model_metrics.png</code></p></div>
+      <div><h3>预测散点图</h3><p><code>outputs/prediction_comparison.png</code></p></div>
+      <div><h3>SHAP 图</h3><p><code>outputs/shap_summary.png</code></p></div>
+      <div><h3>LLM Prompt</h3><p><code>outputs/llm/llm_prompt_S01.txt</code> 等</p></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>5. Fig. 3 风格结果图</h2>
+    <img src="fig3_model_metrics.png" alt="Fig. 3 style model metrics">
+  </section>
+
+  <section>
+    <h2>6. 预测值与真实值</h2>
+    <img src="prediction_comparison.png" alt="Prediction comparison">
+  </section>
+
+  <section>
+    <h2>7. SHAP 教学解释</h2>
+    <p>SHAP 图解释的是 XGBoost 模型在当前数据上如何使用特征。横轴越远离 0，说明该特征对预测的推动越强；颜色表示特征值大小。注意这不是严格因果结论，因为当前只有 19 条样本，更多是教学和方法复现。</p>
+    <img src="shap_summary.png" alt="SHAP summary">
+  </section>
+
+  <section>
+    <h2>8. 五类模型怎么理解</h2>
+    <p><strong>LR</strong> 是线性回归，假设吸附量可以由特征线性相加得到，优点是简单可解释，缺点是难表达非线性。</p>
+    <p><strong>RF</strong> 是随机森林，用多棵决策树平均预测，能处理非线性和特征交互，小数据上相对稳健。</p>
+    <p><strong>XGBoost</strong> 是梯度提升树，逐步修正前一轮模型误差，常用于表格数据，论文类实验中很常见。</p>
+    <p><strong>MLP</strong> 是多层感知机神经网络，理论表达能力强，但 19 条样本很少，容易受随机性和过拟合影响。</p>
+    <p><strong>LLM</strong> 不是重新训练权重，而是把材料背景、训练例子和待预测样本写进 prompt，让模型做 in-context learning。这里保留了本地 Codex CLI 调用接口。</p>
+  </section>
+
+  <section>
+    <h2>9. 为什么不需要 __pycache__</h2>
+    <p><code>__pycache__</code> 是 Python 自动生成的字节码缓存，只是为了加快下次导入速度，不是源码，也不是实验结果。它不需要提交或交给老师，因此本项目的 <code>.gitignore</code> 已经排除了它。</p>
+  </section>
+
+  <section>
+    <h2>10. 论文对应关系</h2>
+    <p>参考论文：Shuangjun Li 等，<em>Methodology for predicting material performance by context-based modeling: A case study on solid amine CO2 adsorbents</em>，Energy and AI, Volume 20, May 2025, Article 100477, DOI: 10.1016/j.egyai.2025.100477。</p>
+    <p>本代码复现的是论文思想：用传统 ML 与 LLM 上下文建模比较 CO2 吸附量预测误差，并用 SHAP 分析特征贡献。由于原仓库没有论文完整数据，本项目使用原仓库 19 条示例数据，所以结果只能作为课程复现和学习模板，不能当作论文数值完全复刻。</p>
+  </section>
+</main>
+</body>
+</html>
