@@ -67,10 +67,3 @@ python -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -r requirements.txt
 ```
 
-## Why `__pycache__` Is Not Included
-
-`__pycache__` is generated automatically by Python. It stores bytecode cache files and is not source code or experiment output. This project excludes it through `.gitignore`.
-
-## Important Limitation
-
-The original repository contains only a small 19-row example dataset. The code is suitable for learning, method reproduction, and classroom demonstration, but the numeric results should not be treated as a full reproduction of the paper.
